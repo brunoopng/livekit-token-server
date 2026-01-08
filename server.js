@@ -3,32 +3,75 @@ import cors from 'cors';
 import { AccessToken } from 'livekit-server-sdk';
 
 const app = express();
+
+/* ===== middlewares ===== */
 app.use(cors());
+app.use(express.json());
 
-const LIVEKIT_API_KEY = process.env.LIVEKIT_API_KEY;
-const LIVEKIT_API_SECRET = process.env.LIVEKIT_API_SECRET;
+/* ===== health check ===== */
+app.get('/', (req, res) => {
+  res.json({ status: 'ok', service: 'livekit-token-server' });
+});
 
+/* ===== token (POST) ===== */
+app.post('/token', (req, res) => {
+  try {
+    const { room, identity } = req.body || {};
+
+    if (!room || !identity) {
+      return res.status(400).json({
+        error: 'Parâmetros obrigatórios: room, identity'
+      });
+    }
+
+    const token = new AccessToken(
+      process.env.LIVEKIT_API_KEY,
+      process.env.LIVEKIT_API_SECRET,
+      { identity }
+    );
+
+    token.addGrant({
+      roomJoin: true,
+      room,
+      canPublish: true,
+      canSubscribe: true
+    });
+
+    res.json({ token: token.toJwt() });
+  } catch (err) {
+    console.error('[TOKEN ERROR]', err);
+    res.status(500).json({ error: 'Erro ao gerar token' });
+  }
+});
+
+/* ===== token (GET - debug) ===== */
 app.get('/token', (req, res) => {
-  const room = req.query.room || 'global';
-  const identity = req.query.id || 'user_' + Math.random().toString(36).slice(2);
+  const { room, identity } = req.query || {};
+
+  if (!room || !identity) {
+    return res.status(400).json({
+      error: 'Use ?room=xxx&identity=yyy'
+    });
+  }
 
   const token = new AccessToken(
-    LIVEKIT_API_KEY,
-    LIVEKIT_API_SECRET,
+    process.env.LIVEKIT_API_KEY,
+    process.env.LIVEKIT_API_SECRET,
     { identity }
   );
 
   token.addGrant({
-    room,
     roomJoin: true,
+    room,
     canPublish: true,
     canSubscribe: true
   });
 
-  res.send(token.toJwt());
+  res.json({ token: token.toJwt() });
 });
 
-const port = process.env.PORT || 3000;
-app.listen(port, () => {
-  console.log('Token server running on port', port);
+/* ===== start ===== */
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log('LiveKit token server running on port', PORT);
 });
